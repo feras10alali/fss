@@ -5,7 +5,7 @@
 
 <header class="bg-black py-1 px-4 shadow-md">
   <img src={logo} alt="Logo" class="h-35  pl-[10%]" />
-
+  <h3>FSS</h3>
   <div class="container mx-auto flex justify-between items-center relative text-white">
     {#if !user}
       <a
