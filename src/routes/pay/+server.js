@@ -1,10 +1,12 @@
 import { json } from '@sveltejs/kit';
 import { pb } from '$lib/pocketbase';
+import { PUBLIC_TAP_API_KEY } from '$env/static/public';
+
 
 export async function POST({ request, locals }) {
 	const data = await request.json();
 
-	const tapRes = await fetch('https://api.tap.company/v2/charges', {
+	const tapRes = await fetch(PUBLIC_TAP_API_KEY, {
 		method: 'POST',
 		headers: {
 			accept: 'application/json',
