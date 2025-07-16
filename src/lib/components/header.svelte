@@ -1,11 +1,14 @@
 <script>
+  import Tlogo from '$lib/images/Tlogo.png';
   import logo from '$lib/images/OBlogo.webp';
   export let user = null;
 </script>
 
 <header class="bg-black py-1 px-4 shadow-md">
-  <img src={logo} alt="Logo" class="h-35  pl-[10%]" />
-  <h3>FSS</h3>
+  <div class="flex">
+    <img src={logo} alt="Logo" class="h-35  pl-[10%]" />
+    <img src={Tlogo} alt="Logo" class="h-20 mt-8  pl-[2%]" />
+  </div>
   <div class="container mx-auto flex justify-between items-center relative text-white">
     {#if !user}
       <a
