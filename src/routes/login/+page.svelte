@@ -24,7 +24,7 @@
 	};
 </script>
 
-<div class="w-screen h-screen flex justify-center items-center p-4 bg-[#f9fafb]">
+<div class="w-screen h-screen flex justify-center items-center p-4 bg-gray-300">
 	<div class="w-full max-w-lg bg-[#ffffff] shadow-xl rounded-2xl p-8">
 		<form on:submit|preventDefault={handleSubmit} class="flex flex-col items-center w-full space-y-5">
 			<!-- Logo -->

@@ -132,7 +132,7 @@
 		
 		// Redirect after a brief delay
 		setTimeout(() => {
-			goto('/dashboard');
+			goto('/profile');
 		}, 1500);
 	}
 	
@@ -142,16 +142,16 @@
 	}
 </script>
 
-<div class="min-h-screen flex items-center justify-center py-12 px-4" style="background-color: #f0f0f0">
+<div class="bg-gray-300 min-h-screen flex items-center justify-center py-12 px-4">
 	<div class="w-full max-w-sm sm:max-w-lg md:max-w-xl lg:max-w-2xl xl:max-w-2xl" style="max-width: 32rem;">
 
 		<!-- Registration Form -->
 		<div class="bg-white rounded-2xl shadow-xl p-8">
             <div class="text-center mb-8">
-                <div class="flex content-center mx-auto h-16 w-16 mb-4 center">
+                <div class="flex content-center mx-auto w-38 mb-4 center">
                     <img src={logo} alt="Logo" class="w-48 object-contain" />
                 </div>
-                <h1 class="text-4xl">register</h1>
+                <h1 class="text-4xl">welcome to FSS</h1>
             </div>
 			
 			<!-- Success Message -->
@@ -205,7 +205,7 @@
 				<div>
 					<label for="name" class="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
 						<User size={16} class="text-gray-600" />
-						Full Name
+						First Name
 					</label>
 					<div class="relative">
 						<input
@@ -215,7 +215,7 @@
 							bind:value={formData.name}
 							on:blur={() => validateField('name', formData.name)}
 							on:input={() => errors.name = ''}
-							placeholder="Enter your full name"
+							placeholder="Enter your First name"
 							class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors {errors.name ? 'border-red-500' : ''}"
 							disabled={isLoading}
 						/>

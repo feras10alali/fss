@@ -1,5 +1,5 @@
 <script>
-  import Tlogo from '$lib/images/Tlogo.png';
+  import Tlogo from '$lib/images/Tlogo.webp';
   import logo from '$lib/images/OBlogo.webp';
   export let user = null;
 </script>
