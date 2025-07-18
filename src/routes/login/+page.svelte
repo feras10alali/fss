@@ -1,5 +1,6 @@
 <script>
 	import logo from '$lib/images/Blogo.webp';
+	import Tlogo from '$lib/images/BTlogo.webp'
 	let email = '';
 	let password = '';
 	let showPassword = false;
@@ -17,7 +18,7 @@
 		const data = await res.json();
 
 		if (res.ok) {
-			window.location.href = '/profile'; // Redirect on success
+			window.location.href = '/home';
 		} else {
 			error = data.error;
 		}
@@ -28,8 +29,9 @@
 	<div class="w-full max-w-lg bg-[#ffffff] shadow-xl rounded-2xl p-8">
 		<form on:submit|preventDefault={handleSubmit} class="flex flex-col items-center w-full space-y-5">
 			<!-- Logo -->
-			<div class="w-48 mb-2 flex justify-center">
-				<img src={logo} alt="Logo" class="h-[50%] object-contain" />
+			<div class="w-48 mb-2 flex items-center justify-center flex-col">
+				<img src={logo} alt="Logo" class="h-[50%] object-contain pb-0 mb-0" />
+				<img src={Tlogo} alt="text logo" class="w-40 py-0 my-1.5 ml-0.5">
 			</div>
 
 			<!-- Title -->

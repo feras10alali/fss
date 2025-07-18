@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { enhance } from '$app/forms';
 	import logo from '$lib/images/OBlogo.webp';
+	import Tlogo from '$lib/images/BTlogo.webp'
 	
 	export let form;
 	
@@ -151,8 +152,11 @@
                 <div class="flex content-center mx-auto w-38 mb-4 center">
                     <img src={logo} alt="Logo" class="w-48 object-contain" />
                 </div>
-                <h1 class="text-4xl">welcome to FSS</h1>
-            </div>
+				<div class="flex text-center items-center justify-center">
+					<h1 class="text-4xl">welcome to</h1>
+					<img src={Tlogo} alt="text logo" class="h-8 mb-0 mt-2 ml-2.5">
+				</div>
+			</div>
 			
 			<!-- Success Message -->
 			{#if successMessage}
