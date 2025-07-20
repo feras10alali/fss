@@ -2,8 +2,10 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
+  import { enhance } from '$app/forms';
   import PocketBase from 'pocketbase';
   import logo from '$lib/images/OBlogo.webp'
+  import Tlogo from '$lib/images/BTlogo.webp'
   export let data;
 
   const pb = new PocketBase('http://127.0.0.1:8090');
@@ -24,6 +26,8 @@
 
   // File input reference
   let fileInput;
+  let createFolderForm;
+  let uploadForm;
 
   // Current view data
   let currentItems = [];
@@ -142,6 +146,11 @@
 
   async function toggleStar(itemId, resourceType) {
     try {
+      // Load auth from cookie if not already loaded
+      if (!pb.authStore.isValid) {
+        pb.authStore.loadFromCookie(document.cookie);
+      }
+
       const isStarred = favorites.includes(itemId);
       
       if (isStarred) {
@@ -165,6 +174,9 @@
       );
     } catch (error) {
       console.error('Error toggling star:', error);
+      if (error.status === 401 || error.status === 403) {
+        alert('Authentication required. Please refresh the page and try again.');
+      }
     }
   }
 
@@ -172,6 +184,10 @@
     if (item.type === 'folder') {
       goto(`/folder/${item.id}`);
     } else {
+      // Load auth from cookie if not already loaded
+      if (!pb.authStore.isValid) {
+        pb.authStore.loadFromCookie(document.cookie);
+      }
       const fileUrl = pb.getFileUrl(item, item.file);
       window.open(fileUrl, '_blank');
     }
@@ -194,27 +210,32 @@
     if (!folderName) return;
 
     try {
-      const newFolder = await pb.collection('folders').create({
-        name: folderName,
-        owner: data?.user?.id,
-        parent_folder: null,
-        is_deleted: false
+      // Create form data and submit via the server action
+      const formData = new FormData();
+      formData.append('name', folderName);
+      const currentFolder = $page.url.searchParams.get('folder') || null;
+      if (currentFolder) {
+        formData.append('parent_folder', currentFolder);
+      }
+
+      const response = await fetch('?/createFolder', {
+        method: 'POST',
+        body: formData
       });
 
-      // Add to recent activity
-      await pb.collection('recent_activity').create({
-        user: data?.user?.id,
-        action: 'create_folder',
-        resource_type: 'folder',
-        resource_id: newFolder.id,
-        resource_name: folderName
-      });
-
-      // Refresh data
-      location.reload();
+      const result = await response.json();
+      
+      if (result.type === 'success') {
+        console.log('Folder created successfully');
+        // Refresh the page to show the new folder
+        location.reload();
+      } else {
+        console.error('Server action failed:', result);
+        alert('Failed to create folder: ' + (result.error || 'Unknown error'));
+      }
     } catch (error) {
       console.error('Error creating folder:', error);
-      alert('Failed to create folder');
+      alert('Failed to create folder: ' + (error.message || 'Network error'));
     }
     
     closeNewModal();
@@ -225,158 +246,91 @@
     closeNewModal();
   }
 
-// Fixed file upload handler function
-async function handleFileUpload(event) {
-  const selectedFiles = Array.from(event.target.files);
-  if (selectedFiles.length === 0) return;
+  // Enhanced file upload handler that uses server actions
+  async function handleFileUpload(event) {
+    const selectedFiles = Array.from(event.target.files);
+    if (selectedFiles.length === 0) return;
 
-  uploading = true;
-  uploadProgress = 0;
-
-  try {
-    const totalFiles = selectedFiles.length;
-    let completedFiles = 0;
-
-    for (const file of selectedFiles) {
-      const formData = new FormData();
-      formData.append('name', file.name);
-      formData.append('file', file);
-      formData.append('size', file.size.toString()); // Ensure it's a string
-      formData.append('mime_type', file.type || 'application/octet-stream');
-      formData.append('owner', data?.user?.id);
-      
-      // Handle parent_folder - set to empty string if null/undefined
-      const parentFolder = $page.url.searchParams.get('folder') || '';
-      formData.append('parent_folder', parentFolder);
-      
-      formData.append('is_deleted', 'false'); // Ensure boolean is sent as string
-
-      console.log('Uploading file:', {
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        owner: data?.user?.id,
-        parent_folder: parentFolder
-      });
-
-      const newFile = await pb.collection('files').create(formData);
-      console.log('File created successfully:', newFile.id);
-
-      // Add to recent activity - only if file creation was successful
-      try {
-        await pb.collection('recent_activity').create({
-          user: data?.user?.id,
-          action: 'upload',
-          resource_type: 'file',
-          resource_id: newFile.id, // Use the actual file ID
-          resource_name: file.name
-        });
-      } catch (activityError) {
-        console.warn('Failed to create recent activity entry:', activityError);
-        // Don't fail the upload if activity logging fails
-      }
-
-      completedFiles++;
-      uploadProgress = (completedFiles / totalFiles) * 100;
-    }
-
-    // Refresh data after successful upload
-    location.reload();
-  } catch (error) {
-    console.error('Error uploading files:', error);
-    
-    // More specific error handling
-    if (error.status === 400) {
-      alert('Invalid file data. Please check the file and try again.');
-    } else if (error.status === 403) {
-      alert('Permission denied. You may not have access to upload files.');
-    } else if (error.status === 413) {
-      alert('File too large. Please select a smaller file.');
-    } else {
-      alert(`Failed to upload files: ${error.message || 'Unknown error'}`);
-    }
-  } finally {
-    uploading = false;
+    uploading = true;
     uploadProgress = 0;
-    event.target.value = ''; // Clear the file input
-  }
-}
 
-// Alternative approach using async/await with better error handling
-async function handleFileUploadAlternative(event) {
-  const selectedFiles = Array.from(event.target.files);
-  if (selectedFiles.length === 0) return;
+    try {
+      const totalFiles = selectedFiles.length;
+      let completedFiles = 0;
+      let successfulUploads = 0;
 
-  uploading = true;
-  uploadProgress = 0;
+      for (const file of selectedFiles) {
+        try {
+          console.log(`Uploading file: ${file.name}`);
+          
+          // Create form data for server action
+          const formData = new FormData();
+          formData.append('file', file);
+          
+          const currentFolder = $page.url.searchParams.get('folder') || null;
+          if (currentFolder) {
+            formData.append('parent_folder', currentFolder);
+          }
 
-  try {
-    // Verify user is authenticated
-    if (!data?.user?.id) {
-      throw new Error('User not authenticated');
-    }
+          // Submit via server action
+          const response = await fetch('?/uploadFile', {
+            method: 'POST',
+            body: formData
+          });
 
-    const totalFiles = selectedFiles.length;
-    let completedFiles = 0;
+          if (response.ok) {
+            const result = await response.json();
+            if (result.type === 'success') {
+              console.log(`File "${file.name}" uploaded successfully`);
+              successfulUploads++;
+            } else {
+              console.error(`Server action failed for file "${file.name}":`, result);
+            }
+          } else {
+            console.error(`HTTP error for file "${file.name}":`, response.status, response.statusText);
+          }
 
-    for (const file of selectedFiles) {
-      try {
-        // Create the file record
-        const fileData = {
-          name: file.name,
-          file: file,
-          size: file.size,
-          mime_type: file.type || 'application/octet-stream',
-          owner: data.user.id,
-          parent_folder: $page.url.searchParams.get('folder') || null,
-          is_deleted: false
-        };
-
-        const newFile = await pb.collection('files').create(fileData);
-        
-        // Log successful creation
-        console.log(`File "${file.name}" uploaded successfully with ID: ${newFile.id}`);
-
-        // Create activity record
-        await pb.collection('recent_activity').create({
-          user: data.user.id,
-          action: 'upload',
-          resource_type: 'file',
-          resource_id: newFile.id,
-          resource_name: file.name
-        }).catch(err => {
-          console.warn('Failed to log activity:', err);
-        });
+        } catch (fileError) {
+          console.error(`Failed to upload file "${file.name}":`, fileError);
+        }
 
         completedFiles++;
         uploadProgress = (completedFiles / totalFiles) * 100;
-
-      } catch (fileError) {
-        console.error(`Failed to upload file "${file.name}":`, fileError);
-        // Continue with other files even if one fails
-        completedFiles++;
-        uploadProgress = (completedFiles / totalFiles) * 100;
       }
-    }
 
-    // Refresh the page to show new files
-    await new Promise(resolve => setTimeout(resolve, 500)); // Small delay
-    location.reload();
+      if (successfulUploads > 0) {
+        console.log(`Successfully uploaded ${successfulUploads} out of ${totalFiles} files`);
+        // Refresh the page to show new files
+        await new Promise(resolve => setTimeout(resolve, 500));
+        location.reload();
+      } else {
+        alert('No files were uploaded successfully. Please try again.');
+      }
 
-  } catch (error) {
-    console.error('Upload process failed:', error);
-    alert('Upload failed: ' + (error.message || 'Unknown error'));
-  } finally {
-    uploading = false;
-    uploadProgress = 0;
-    if (event.target) {
-      event.target.value = '';
+    } catch (error) {
+      console.error('Upload process failed:', error);
+      alert('Upload failed: ' + (error.message || 'Unknown error'));
+    } finally {
+      uploading = false;
+      uploadProgress = 0;
+      event.target.value = ''; // Clear the file input
     }
   }
-}
 
   onMount(() => {
+    // Load authentication from cookie
     pb.authStore.loadFromCookie(document.cookie);
+    
+    // Verify authentication matches server data
+    if (pb.authStore.isValid && data?.user && pb.authStore.model?.id !== data.user.id) {
+      console.warn('Authentication mismatch detected');
+      console.log('Client auth user ID:', pb.authStore.model?.id);
+      console.log('Server user ID:', data.user.id);
+    }
+
+    console.log('Dashboard mounted with user:', data?.user?.email);
+    console.log('Files count:', data?.files?.length || 0);
+    console.log('Folders count:', data?.folders?.length || 0);
   });
 </script>
 
@@ -389,9 +343,7 @@ async function handleFileUploadAlternative(event) {
   <header class="flex items-center px-4 py-2 bg-white border-b border-gray-200 sticky top-0 z-50">
     <div class="flex items-center mr-auto">
       <img src={logo} alt="logo" class="w-18 ml-1">
-      <h1 class="flex items-center text-4xl font-medium text-black m-0">
-        FSS
-      </h1>
+      <img src={Tlogo} alt="text logo" class="w-26 ml-1.5">
     </div>
     
     <div class="relative max-w-2xl w-full mx-8">
@@ -608,6 +560,10 @@ async function handleFileUploadAlternative(event) {
   on:change={handleFileUpload}
   class="hidden"
 />
+
+<!-- Hidden forms for server actions -->
+<form bind:this={createFolderForm} method="POST" action="?/createFolder" style="display: none;" use:enhance></form>
+<form bind:this={uploadForm} method="POST" action="?/uploadFile" enctype="multipart/form-data" style="display: none;" use:enhance></form>
 
 <style>
   @media (max-width: 768px) {
