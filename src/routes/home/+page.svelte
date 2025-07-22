@@ -3,10 +3,13 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { enhance } from '$app/forms';
+  import { PUBLIC_POCKETBASE_URL } from '$env/static/public';
   import PocketBase from 'pocketbase';
   import logo from '$lib/images/OBlogo.webp'
   import Tlogo from '$lib/images/BTlogo.webp'
   export let data;
+  let showProfileDropdown = false;
+
 
   const pb = new PocketBase('http://127.0.0.1:8090');
 
@@ -17,12 +20,19 @@
   let favorites = data?.favorites || [];
   let storageUsed = data?.storageUsed || 0;
   let storageTotal = data?.storageTotal || 15;
-  let viewMode = 'grid';
+  let viewMode = 'list';
   let searchQuery = '';
   let currentView = 'my-drive'; // my-drive, shared, recent, starred, trash
   let showNewModal = false;
   let uploading = false;
   let uploadProgress = 0;
+
+  // New form state
+  let showNewForm = false;
+  let newItemType = ''; // 'file' or 'folder'
+  let newItemName = '';
+  let selectedPath = '/';
+  let availableFolders = [];
 
   // File input reference
   let fileInput;
@@ -32,6 +42,39 @@
   // Current view data
   let currentItems = [];
   let currentTitle = 'My Drive';
+
+  async function handleLogout() {
+    try {
+      // Call the server logout endpoint
+      const response = await fetch('/logout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        // Clear client-side auth store
+        pb.authStore.clear();
+        // Redirect to login page
+        goto('/login');
+      } else {
+        throw new Error('Logout request failed');
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Clear client auth anyway and force redirect
+      pb.authStore.clear();
+      goto('/login');
+    }
+  }
+
+  function handleClickOutside(event) {
+    if (!event.target.closest('.profile-dropdown-container')) {
+      showProfileDropdown = false;
+    }
+  }
+
 
   // Initialize data
   $: {
@@ -54,6 +97,9 @@
         starred: favorites.includes(file.id)
       }))
     ];
+
+    // Update available folders for the form
+    updateAvailableFolders();
   }
 
   // Update current view data
@@ -92,6 +138,48 @@
   $: filteredItems = currentItems.filter(item => 
     item.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  function updateAvailableFolders() {
+    const folders = allItems.filter(item => item.type === 'folder');
+    const pathParts = selectedPath === '/' ? [] : selectedPath.split('/').filter(Boolean);
+    
+    if (pathParts.length === 0) {
+      // Show root level folders
+      availableFolders = folders.filter(folder => !folder.parent_folder);
+    } else {
+      // Find the current folder and show its subfolders
+      const currentFolderId = getFolderIdFromPath(pathParts);
+      availableFolders = folders.filter(folder => folder.parent_folder === currentFolderId);
+    }
+  }
+
+  function getFolderIdFromPath(pathParts) {
+    let currentFolderId = null;
+    const folders = allItems.filter(item => item.type === 'folder');
+    
+    console.log('Getting folder ID from path parts:', pathParts);
+    console.log('Available folders:', folders.map(f => ({ id: f.id, name: f.name, parent: f.parent_folder })));
+    
+    for (const part of pathParts) {
+      const folder = folders.find(f => {
+        const nameMatch = f.name === part;
+        const parentMatch = f.parent_folder === currentFolderId;
+        console.log(`Checking folder "${f.name}" (${f.id}): nameMatch=${nameMatch}, parentMatch=${parentMatch}, parent=${f.parent_folder}, currentParent=${currentFolderId}`);
+        return nameMatch && parentMatch;
+      });
+      
+      if (folder) {
+        currentFolderId = folder.id;
+        console.log(`Found folder "${part}" with ID:`, currentFolderId);
+      } else {
+        console.log(`Folder "${part}" not found in current path`);
+        break;
+      }
+    }
+    
+    console.log('Final folder ID:', currentFolderId);
+    return currentFolderId;
+  }
 
   function getFileType(mimeType) {
     if (!mimeType) return 'file';
@@ -147,28 +235,38 @@
   async function toggleStar(itemId, resourceType) {
     try {
       // Load auth from cookie if not already loaded
-      if (!pb.authStore.isValid) {
-        pb.authStore.loadFromCookie(document.cookie);
-      }
-
+      pb.authStore.loadFromCookie(document.cookie);
+      const userId = pb.authStore.model.id;
       const isStarred = favorites.includes(itemId);
       
+      console.log('Toggling star for item:', itemId, 'User:', userId, 'Currently starred:', isStarred);
+      
       if (isStarred) {
-        const favorite = await pb.collection('favorites').getFirstListItem(
-          `user = "${data?.user?.id}" && resource_id = "${itemId}" && resource_type = "${resourceType}"`
-        );
-        await pb.collection('favorites').delete(favorite.id);
-        favorites = favorites.filter(id => id !== itemId);
+        // Remove from favorites
+        try {
+          const favorite = await pb.collection('favorites').getFirstListItem(
+            `user = "${userId}" && resource_id = "${itemId}" && resource_type = "${resourceType}"`
+          );
+          await pb.collection('favorites').delete(favorite.id);
+          favorites = favorites.filter(id => id !== itemId);
+          console.log('Removed from favorites');
+        } catch (findError) {
+          console.error('Error finding/removing favorite:', findError);
+          // If we can't find the favorite record, just remove it from the local array
+          favorites = favorites.filter(id => id !== itemId);
+        }
       } else {
+        // Add to favorites
         await pb.collection('favorites').create({
-          user: data?.user?.id,
+          user: userId,
           resource_id: itemId,
           resource_type: resourceType
         });
         favorites = [...favorites, itemId];
+        console.log('Added to favorites');
       }
       
-      // Update the item's starred status
+      // Update the item's starred status in the UI
       allItems = allItems.map(item => 
         item.id === itemId ? { ...item, starred: !item.starred } : item
       );
@@ -176,6 +274,8 @@
       console.error('Error toggling star:', error);
       if (error.status === 401 || error.status === 403) {
         alert('Authentication required. Please refresh the page and try again.');
+      } else {
+        alert('Failed to update favorite. Please try again.');
       }
     }
   }
@@ -205,40 +305,96 @@
     showNewModal = false;
   }
 
-  async function createNewFolder() {
-    const folderName = prompt('Enter folder name:');
-    if (!folderName) return;
+  function openNewForm(type) {
+    newItemType = type;
+    newItemName = '';
+    selectedPath = '/';
+    showNewForm = true;
+    showNewModal = false;
+    updateAvailableFolders();
+  }
 
-    try {
-      // Create form data and submit via the server action
-      const formData = new FormData();
-      formData.append('name', folderName);
-      const currentFolder = $page.url.searchParams.get('folder') || null;
-      if (currentFolder) {
-        formData.append('parent_folder', currentFolder);
-      }
+  function closeNewForm() {
+    showNewForm = false;
+    newItemType = '';
+    newItemName = '';
+    selectedPath = '/';
+  }
 
-      const response = await fetch('?/createFolder', {
-        method: 'POST',
-        body: formData
-      });
+  function selectFolder(folderId, folderName) {
+    if (selectedPath === '/') {
+      selectedPath = folderName + '/';
+    } else {
+      selectedPath = selectedPath + folderName + '/';
+    }
+    updateAvailableFolders();
+  }
 
-      const result = await response.json();
-      
-      if (result.type === 'success') {
-        console.log('Folder created successfully');
-        // Refresh the page to show the new folder
-        location.reload();
-      } else {
-        console.error('Server action failed:', result);
-        alert('Failed to create folder: ' + (result.error || 'Unknown error'));
-      }
-    } catch (error) {
-      console.error('Error creating folder:', error);
-      alert('Failed to create folder: ' + (error.message || 'Network error'));
+  function handlePathClick(event, index) {
+    const pathParts = selectedPath === '/' ? [] : selectedPath.split('/').filter(Boolean);
+    
+    if (index === -1) {
+      // Clicked on root "/"
+      selectedPath = '/';
+    } else {
+      // Clicked on a specific folder
+      selectedPath = pathParts.slice(0, index + 1).join('/') + '/';
     }
     
-    closeNewModal();
+    updateAvailableFolders();
+  }
+
+  async function submitNewItem() {
+    if (!newItemName.trim()) {
+      alert('Please enter a name');
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('name', newItemName.trim());
+      
+      // Fix: Get the correct parent folder ID
+      let parentFolderId = null;
+      
+      if (selectedPath !== '/') {
+        const pathParts = selectedPath.split('/').filter(Boolean);
+        parentFolderId = getFolderIdFromPath(pathParts);
+      }
+
+      // Only append parent_folder if we have a valid ID
+      if (parentFolderId) {
+        formData.append('parent_folder', parentFolderId);
+      }
+
+      console.log('Creating item with parent folder:', parentFolderId, 'from path:', selectedPath);
+
+      if (newItemType === 'folder') {
+        const response = await fetch('?/createFolder', {
+          method: 'POST',
+          body: formData
+        });
+
+        const result = await response.json();
+        
+        if (result.type === 'success') {
+          console.log('Folder created successfully');
+          location.reload();
+        } else {
+          alert('Failed to create folder: ' + (result.error || 'Unknown error'));
+        }
+      } else if (newItemType === 'file') {
+        // Store the parent folder ID for file upload
+        window.selectedParentFolder = parentFolderId;
+        // Trigger file upload
+        fileInput.click();
+      }
+      
+      closeNewForm();
+    } catch (error) {
+      console.error('Error creating item:', error);
+      alert('Failed to create item: ' + (error.message || 'Network error'));
+    }
   }
 
   function triggerFileUpload() {
@@ -246,6 +402,7 @@
     closeNewModal();
   }
 
+  // Enhanced file upload handler that uses server actions
   // Enhanced file upload handler that uses server actions
   async function handleFileUpload(event) {
     const selectedFiles = Array.from(event.target.files);
@@ -267,9 +424,26 @@
           const formData = new FormData();
           formData.append('file', file);
           
-          const currentFolder = $page.url.searchParams.get('folder') || null;
-          if (currentFolder) {
-            formData.append('parent_folder', currentFolder);
+          // Fix: Use the stored parent folder ID or determine current folder
+          let parentFolderId = null;
+          
+          if (window.selectedParentFolder) {
+            // Use the parent folder set when creating through the form
+            parentFolderId = window.selectedParentFolder;
+          } else if (showNewForm && selectedPath !== '/') {
+            // Use selected path from new form
+            const pathParts = selectedPath.split('/').filter(Boolean);
+            parentFolderId = getFolderIdFromPath(pathParts);
+          } else {
+            // Use current folder from URL
+            const currentFolder = $page.url.searchParams.get('folder') || null;
+            parentFolderId = currentFolder;
+          }
+
+          console.log('File upload - Using parent folder:', parentFolderId);
+          
+          if (parentFolderId) {
+            formData.append('parent_folder', parentFolderId);
           }
 
           // Submit via server action
@@ -314,13 +488,19 @@
       uploading = false;
       uploadProgress = 0;
       event.target.value = ''; // Clear the file input
+      closeNewForm();
+      // Clear the stored parent folder
+      window.selectedParentFolder = null;
     }
   }
 
   onMount(() => {
     // Load authentication from cookie
     pb.authStore.loadFromCookie(document.cookie);
-    
+    document.addEventListener('click', handleClickOutside);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
     // Verify authentication matches server data
     if (pb.authStore.isValid && data?.user && pb.authStore.model?.id !== data.user.id) {
       console.warn('Authentication mismatch detected');
@@ -335,7 +515,7 @@
 </script>
 
 <svelte:head>
-  <title>Dashboard - Drive</title>
+  <title>HOME - FSS</title>
 </svelte:head>
 
 <div class="min-h-screen bg-gray-50">
@@ -371,15 +551,87 @@
       >
         ☰
       </button>
-      <div class="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center ml-2 font-medium uppercase">
-        {data?.user?.name?.charAt(0) || data?.user?.email?.charAt(0) || '👤'}
+      <div class="relative profile-dropdown-container">
+        <button 
+          class="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center ml-2 font-medium uppercase hover:bg-blue-700 transition-colors"
+          on:click={() => showProfileDropdown = !showProfileDropdown}
+        >
+          {data?.user?.name?.charAt(0) || data?.user?.email?.charAt(0) || '👤'}
+        </button>
+        
+        {#if showProfileDropdown}
+          <div class="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+            <!-- User Info Section -->
+            <div class="p-4 border-b border-gray-100">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-medium uppercase">
+                  {data?.user?.name?.charAt(0) || data?.user?.email?.charAt(0) || '👤'}
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium text-gray-900 truncate">
+                    {data?.user?.name || 'User'}
+                  </div>
+                  <div class="text-sm text-gray-500 truncate">
+                    {data?.user?.email}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Menu Items -->
+            <div class="py-2">
+              <button 
+                class="w-full flex items-center gap-3 px-4 py-2 text-left text-gray-700 hover:bg-gray-50 transition-colors"
+                on:click={() => {
+                  showProfileDropdown = false;
+                  goto('/profile'); // adjust this route as needed
+                }}
+              >
+                <span class="text-lg">👤</span>
+                <span>Profile</span>
+              </button>
+              
+              <button 
+                class="w-full flex items-center gap-3 px-4 py-2 text-left text-gray-700 hover:bg-gray-50 transition-colors"
+                on:click={() => {
+                  showProfileDropdown = false;
+                  goto('/settings'); // adjust this route as needed
+                }}
+              >
+                <span class="text-lg">⚙️</span>
+                <span>Settings</span>
+              </button>
+              
+              <button 
+                class="w-full flex items-center gap-3 px-4 py-2 text-left text-gray-700 hover:bg-gray-50 transition-colors"
+                on:click={() => {
+                  showProfileDropdown = false;
+                  // Add help/support functionality
+                }}
+              >
+                <span class="text-lg">❓</span>
+                <span>Help & Support</span>
+              </button>
+              
+              <hr class="my-2 border-gray-100">
+              
+              <button 
+                class="w-full flex items-center gap-3 px-4 py-2 text-left text-red-600 hover:bg-red-50 transition-colors"
+                on:click={handleLogout}
+              >
+                <span class="text-lg">🚪</span>
+                <span>Sign out</span>
+              </button>
+            </div>
+          </div>
+        {/if}
       </div>
     </div>
   </header>
 
   <div class="flex min-h-[calc(100vh-65px)]">
-    <!-- Sidebar -->
-    <aside class="w-64 bg-white border-r border-gray-200 p-4 flex flex-col">
+    <!-- Sidebar - Fixed positioning -->
+    <aside class="w-64 bg-white border-r border-gray-200 p-4 flex flex-col fixed left-0 top-16 h-[calc(100vh-65px)] overflow-y-auto">
       <button 
         class="flex items-center gap-3 py-3 px-4 border border-gray-200 rounded-3xl bg-white text-sm font-medium cursor-pointer mb-6 shadow-sm hover:shadow-md transition-shadow"
         on:click={openNewModal}
@@ -441,8 +693,87 @@
       </div>
     </aside>
 
-    <!-- Main content area -->
-    <main class="flex-1 p-6 overflow-y-auto">
+    <!-- Main content area - Adjusted for fixed sidebar -->
+    <main class="flex-1 p-6 overflow-y-auto ml-64">
+      <!-- New Form - Slides down from top -->
+      {#if showNewForm}
+        <div class="mb-6 bg-white border border-gray-200 rounded-lg p-4 shadow-sm animate-slide-down">
+          <h3 class="text-lg font-medium mb-4">
+            {newItemType === 'folder' ? 'Create New Folder' : 'Upload Files'}
+          </h3>
+          
+          <!-- Name Input -->
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Name</label>
+            <input 
+              type="text" 
+              bind:value={newItemName}
+              placeholder={newItemType === 'folder' ? 'Enter folder name' : 'Enter file name'}
+              class="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+            />
+          </div>
+
+          <!-- Location Selection -->
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Location</label>
+            
+            <!-- Path Display -->
+            <div class="mb-2 p-2 bg-gray-50 rounded border text-sm text-gray-600">
+              <span 
+                class="cursor-pointer hover:text-blue-600 hover:underline"
+                on:click={() => handlePathClick(null, -1)}
+              >
+                /
+              </span>
+              {#each selectedPath === '/' ? [] : selectedPath.split('/').filter(Boolean) as part, index}
+                <span 
+                  class="cursor-pointer hover:text-blue-600 hover:underline"
+                  on:click={() => handlePathClick(null, index)}
+                >
+                  {part}/
+                </span>
+              {/each}
+            </div>
+
+            <!-- Folder Selection -->
+            <div class="space-y-2">
+              {#if availableFolders.length > 0}
+                {#each availableFolders as folder}
+                  <button
+                    type="button"
+                    class="w-full flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
+                    on:click={() => selectFolder(folder.id, folder.name)}
+                  >
+                    <span class="text-base">📁</span>
+                    <span>{folder.name}</span>
+                  </button>
+                {/each}
+              {:else}
+                <div class="text-sm text-gray-500 p-3 bg-gray-50 rounded-lg">
+                  No subfolders available
+                </div>
+              {/if}
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="flex gap-2 justify-end">
+            <button 
+              class="px-4 py-2 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+              on:click={closeNewForm}
+            >
+              Cancel
+            </button>
+            <button 
+              class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              on:click={submitNewItem}
+            >
+              {newItemType === 'folder' ? 'Create Folder' : 'Select Files'}
+            </button>
+          </div>
+        </div>
+      {/if}
+
       <!-- Upload Progress -->
       {#if uploading}
         <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -527,14 +858,14 @@
       <div class="space-y-2">
         <button 
           class="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg text-left"
-          on:click={createNewFolder}
+          on:click={() => openNewForm('folder')}
         >
           <span class="text-xl">📁</span>
           <span>New folder</span>
         </button>
         <button 
           class="w-full flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg text-left"
-          on:click={triggerFileUpload}
+          on:click={() => openNewForm('file')}
         >
           <span class="text-xl">📄</span>
           <span>Upload files</span>
@@ -566,6 +897,21 @@
 <form bind:this={uploadForm} method="POST" action="?/uploadFile" enctype="multipart/form-data" style="display: none;" use:enhance></form>
 
 <style>
+  @keyframes slide-down {
+    from {
+      opacity: 0;
+      transform: translateY(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-slide-down {
+    animation: slide-down 0.3s ease-out;
+  }
+
   @media (max-width: 768px) {
     aside {
       position: fixed;
@@ -577,6 +923,7 @@
     }
     
     main {
+      margin-left: 0;
       width: 100%;
       padding: 1rem;
     }

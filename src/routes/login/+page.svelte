@@ -1,124 +1,232 @@
 <script>
+	import { Mail, Lock, Eye, EyeOff, LogIn, AlertCircle } from 'lucide-svelte';
 	import logo from '$lib/images/Blogo.webp';
-	import Tlogo from '$lib/images/BTlogo.webp'
-	let email = '';
-	let password = '';
-	let showPassword = false;
-	let error = '';
+	import Tlogo from '$lib/images/BTlogo.webp';
 
+	// Form data
+	let formData = {
+		email: '',
+		password: ''
+	};
+
+	// UI state
+	let showPassword = false;
+	let isLoading = false;
+	let errors = {};
+	let successMessage = '';
+
+	// Form validation
+	$: isFormValid = formData.email.trim() !== '' && 
+					 formData.password.length >= 1 &&
+					 isValidEmail(formData.email);
+
+	// Email validation
+	function isValidEmail(email) {
+		const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+		return emailRegex.test(email);
+	}
+
+	// Real-time validation
+	function validateField(field, value) {
+		errors[field] = '';
+		
+		switch (field) {
+			case 'email':
+				if (!value.trim()) {
+					errors[field] = 'Email is required';
+				} else if (!isValidEmail(value)) {
+					errors[field] = 'Please enter a valid email address';
+				}
+				break;
+			
+			case 'password':
+				if (!value) {
+					errors[field] = 'Password is required';
+				}
+				break;
+		}
+		
+		errors = { ...errors };
+	}
+
+	// Handle form submission
 	const handleSubmit = async (event) => {
 		event.preventDefault();
 
-		const res = await fetch('/login', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ email, password })
-		});
+		// Validate form before submission
+		if (!isFormValid) {
+			return;
+		}
 
-		const data = await res.json();
+		isLoading = true;
+		errors = {};
+		successMessage = '';
 
-		if (res.ok) {
-			window.location.href = '/home';
-		} else {
-			error = data.error;
+		try {
+			const res = await fetch('/login', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ 
+					email: formData.email.toLowerCase().trim(), 
+					password: formData.password.trim() 
+				})
+			});
+
+			const data = await res.json();
+
+			if (res.ok) {
+				successMessage = 'Login successful! Redirecting...';
+				// Small delay to show success message
+				setTimeout(() => {
+					window.location.href = '/home';
+				}, 1000);
+			} else {
+				errors.general = data.error || 'Login failed';
+			}
+		} catch (error) {
+			console.error('Login error:', error);
+			errors.general = 'Network error. Please try again.';
+		} finally {
+			isLoading = false;
 		}
 	};
 </script>
 
-<div class="w-screen h-screen flex justify-center items-center p-4 bg-gray-300">
-	<div class="w-full max-w-lg bg-[#ffffff] shadow-xl rounded-2xl p-8">
-		<form on:submit|preventDefault={handleSubmit} class="flex flex-col items-center w-full space-y-5">
-			<!-- Logo -->
-			<div class="w-48 mb-2 flex items-center justify-center flex-col">
-				<img src={logo} alt="Logo" class="h-[50%] object-contain pb-0 mb-0" />
-				<img src={Tlogo} alt="text logo" class="w-40 py-0 my-1.5 ml-0.5">
+<div class="bg-gray-300 min-h-screen flex items-center justify-center py-12 px-4">
+	<div class="w-full max-w-sm sm:max-w-lg md:max-w-xl lg:max-w-2xl xl:max-w-2xl" style="max-width: 32rem;">
+
+		<!-- Login Form -->
+		<div class="bg-white rounded-2xl shadow-xl p-8">
+			<div class="text-center mb-8">
+				<div class="flex content-center mx-auto w-38 mb-4 center">
+					<img src={logo} alt="Logo" class="w-48 object-contain" />
+				</div>
+				<div class="flex text-center items-center justify-center">
+					<h1 class="text-4xl">welcome back to</h1>
+					<img src={Tlogo} alt="text logo" class="h-8 mb-0 mt-2 ml-2.5">
+				</div>
 			</div>
 
-			<!-- Title -->
-			<h2 class="text-2xl font-semibold text-black">Login to Your Account</h2>
+			<!-- Success Message -->
+			{#if successMessage}
+				<div class="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
+					<div class="w-5 h-5 border-2 border-green-600 border-t-transparent rounded-full animate-spin flex-shrink-0"></div>
+					<p class="text-green-800 text-sm">{successMessage}</p>
+				</div>
+			{/if}
 
-			<!-- Email Field -->
-			<div class="relative w-full">
-				<input 
-					bind:value={email}
-					id="email"
-					name="email"
-					type="email"
-					required
-					placeholder=" "
-					class="peer block w-full p-3 pt-5 text-sm bg-transparent border border-black rounded-xl text-black placeholder-transparent focus:outline-none focus:ring-2 focus:ring-black focus:border-black transition-all"
-				/>
-				<label 
-					for="email"
-					class="absolute start-3 top-1 text-sm text-black bg-[#ffffff] px-1 transition-all scale-75 -translate-y-3 origin-[0] peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-2.5 peer-placeholder-shown:text-base peer-placeholder-shown:text-black peer-focus:scale-75 peer-focus:-translate-y-5"
-				>
-					Email Address
-				</label>
-			</div>
+			<!-- General Error -->
+			{#if errors.general}
+				<div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3">
+					<AlertCircle size={20} class="text-red-600 flex-shrink-0" />
+					<p class="text-red-800 text-sm">{errors.general}</p>
+				</div>
+			{/if}
 
-			<!-- Password Field -->
-			<div class="relative w-full">
+			<form on:submit={handleSubmit} class="space-y-6">
+				
+				<!-- Email Field -->
+				<div>
+					<label for="email" class="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+						<Mail size={16} class="text-gray-600" />
+						Email Address
+					</label>
+					<div class="relative">
+						<input
+							id="email"
+							name="email"
+							type="email"
+							bind:value={formData.email}
+							on:blur={() => validateField('email', formData.email)}
+							on:input={() => errors.email = ''}
+							placeholder="Enter your email"
+							class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors {errors.email ? 'border-red-500' : ''}"
+							disabled={isLoading}
+						/>
+					</div>
+					{#if errors.email}
+						<p class="mt-1 text-sm text-red-600">{errors.email}</p>
+					{/if}
+				</div>
+
+				<!-- Password Field -->
+				<div>
+					<label for="password" class="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+						<Lock size={16} class="text-gray-600" />
+						Password
+					</label>
+					<div class="relative">
+						<input
+							id="password"
+							name="password"
+							type={showPassword ? 'text' : 'password'}
+							bind:value={formData.password}
+							on:blur={() => validateField('password', formData.password)}
+							on:input={() => errors.password = ''}
+							placeholder="Enter your password"
+							class="w-full px-4 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors {errors.password ? 'border-red-500' : ''}"
+							disabled={isLoading}
+						/>
+						<button
+							type="button"
+							on:click={() => showPassword = !showPassword}
+							class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+							disabled={isLoading}
+						>
+							{#if showPassword}
+								<EyeOff size={20} />
+							{:else}
+								<Eye size={20} />
+							{/if}
+						</button>
+					</div>
+					{#if errors.password}
+						<p class="mt-1 text-sm text-red-600">{errors.password}</p>
+					{/if}
+				</div>
+
+				<!-- Forgot Password -->
+				<div class="text-right">
+					<a href="/forgot-password" class="text-sm text-blue-600 hover:text-blue-700 transition-colors">
+						Forgot your password?
+					</a>
+				</div>
+
+				<!-- Submit Button -->
 				<button
-					type="button"
-					on:click={() => showPassword = !showPassword}
-					class="absolute inset-y-0 right-0 flex items-center px-3 text-black hover:text-gray-700 transition-all"
-					aria-label="Toggle password visibility"
+					type="submit"
+					disabled={!isFormValid || isLoading}
+					class="w-full bg-black text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-900 focus:ring-2 focus:ring-black focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
 				>
-					{#if showPassword}
-						<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-							<path d="M21 12c0 1.2-4.03 6-9 6s-9-4.8-9-6c0-1.2 4.03-6 9-6s9 4.8 9 6Z" />
-							<path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-						</svg>
+					{#if isLoading}
+						<div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+						Signing In...
 					{:else}
-						<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-							<path d="M3.933 13.909A4.357 4.357 0 0 1 3 12c0-1 4-6 9-6m7.6 3.8A5.068 5.068 0 0 1 21 12c0 1-3 6-9 6-.314 0-.62-.014-.918-.04M5 19 19 5m-4 7a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-						</svg>
+						<LogIn size={20} />
+						Sign In
 					{/if}
 				</button>
-				<input 
-					bind:value={password}
-					id="password"
-					name="password"
-					type={showPassword ? "text" : "password"}
-					required
-					placeholder=" "
-					class="peer block w-full p-3 pt-5 text-sm bg-transparent border border-black rounded-xl text-black placeholder-transparent focus:outline-none focus:ring-2 focus:ring-black focus:border-black transition-all"
-				/>
-				<label 
-					for="password"
-					class="absolute start-3 top-1 text-sm text-black bg-[#ffffff] px-1 transition-all scale-75 -translate-y-3 origin-[0] peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-2.5 peer-placeholder-shown:text-base peer-placeholder-shown:text-black peer-focus:scale-75 peer-focus:-translate-y-5"
-				>
-					Password
-				</label>
+			</form>
+
+			<!-- Register Link -->
+			<div class="mt-6 text-center">
+				<p class="text-gray-600">
+					Don't have an account?
+					<a href="/register" class="text-blue-600 hover:text-blue-700 font-medium">
+						Register here
+					</a>
+				</p>
 			</div>
+		</div>
 
-			<!-- Forgot Password -->
-			<div class="w-full text-end">
-				<a href="/forgot-password" class="text-sm text-gray-900 hover:text-gray-700 hover:underline transition-all">
-					Forgot your password?
-				</a>
-			</div>
-			<!-- Error Message -->
-			{#if error}
-				<p class="text-red-500 text-sm italic">{form.error}</p>
-			{/if}
-			<!-- Submit Button -->
-			<button
-				type="submit"
-				class="w-full bg-black hover:bg-gray-800 active:bg-gray-900 text-white font-semibold py-2.5 rounded-xl shadow-md transition-all"
-			>
-				Login
-			</button>
-
-		
-
-			<!-- Register Prompt -->
-			<p class="text-sm text-black">
-				Don't have an account? 
-				<a href="/register" class="text-gray-600 hover:text-gray-700 hover:underline transition-all">
-					Register here
-				</a>
+		<!-- Terms and Privacy -->
+		<div class="mt-6 text-center">
+			<p class="text-xs text-gray-500">
+				By signing in, you agree to our
+				<a href="/terms" class="text-blue-600 hover:text-blue-700">Terms of Service</a>
+				and
+				<a href="/privacy" class="text-blue-600 hover:text-blue-700">Privacy Policy</a>
 			</p>
-		</form>
+		</div>
 	</div>
 </div>

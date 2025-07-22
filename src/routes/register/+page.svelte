@@ -118,24 +118,7 @@
 		errors = { ...errors };
 	}
 	
-	// Check if form indicates success
-	$: if (form?.success) {
-		successMessage = form.message || 'Registration successful!';
-		errors = {};
-		
-		// Clear form data
-		formData = {
-			name: '',
-			email: '',
-			password: '',
-			confirmPassword: ''
-		};
-		
-		// Redirect after a brief delay
-		setTimeout(() => {
-			goto('/profile');
-		}, 1500);
-	}
+	
 	
 	// Update errors when form changes
 	$: if (form?.errors) {
@@ -191,11 +174,8 @@
 					return async ({ result, update }) => {
 						isLoading = false;
 						
-						if (result.type === 'success') {
-							// Handle success - the reactive statement will handle the rest
-							successMessage = result.data?.message || 'Registration successful!';
-							errors = {};
-						} else if (result.type === 'failure') {
+						// Remove the success handling since server will redirect
+						if (result.type === 'failure') {
 							errors = result.data?.errors || {};
 							successMessage = '';
 						}

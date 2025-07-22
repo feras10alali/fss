@@ -60,7 +60,7 @@ export const actions = {
 			
 			console.log('🔍 REGISTER: Attempting to create user:', trimmedEmail);
 			
-			// Create user in PocketBase
+			// Create user in PocketBase with email verification
 			const userData = {
 				name: trimmedName,
 				email: trimmedEmail,
@@ -72,6 +72,15 @@ export const actions = {
 			const newUser = await pb.collection('users').create(userData);
 			console.log('🔍 REGISTER: User created successfully:', newUser.id);
 
+			// Send email verification
+			try {
+				await pb.collection('users').requestVerification(trimmedEmail);
+				console.log('🔍 REGISTER: Verification email sent to:', trimmedEmail);
+			} catch (verificationError) {
+				console.error('🔍 REGISTER: Failed to send verification email:', verificationError);
+				// Continue with registration even if email verification fails
+			}
+
 			// Auto-login after successful registration
 			console.log('🔍 REGISTER: Attempting auto-login for:', trimmedEmail);
 			const authData = await pb.collection('users').authWithPassword(trimmedEmail, trimmedPassword);
@@ -79,35 +88,28 @@ export const actions = {
 			console.log('🔍 REGISTER: Auto-login successful');
 			console.log('🔍 REGISTER: Auth token:', pb.authStore.token);
 
-			// Set the auth cookie properly - store the entire authStore as JSON
-			const authStoreData = {
-				token: pb.authStore.token,
-				model: pb.authStore.model
-			};
+			// Set the auth cookie properly using the same format as your login
+			const authCookieValue = `${pb.authStore.token}; model=${JSON.stringify(pb.authStore.model)}`;
 
-			cookies.set('pb_auth', JSON.stringify(authStoreData), {
+			cookies.set('pb_auth', authCookieValue, {
 				path: '/',
 				httpOnly: true,
 				sameSite: 'strict',
-				secure: process.env.NODE_ENV === 'production', // Use secure in production
+				secure: process.env.NODE_ENV === 'production',
 				maxAge: 60 * 60 * 24 * 30 // 30 days
 			});
 
 			console.log('🔍 REGISTER: Auth cookie set successfully');
 
-			// Return success response instead of throwing redirect
-			// The redirect will be handled by the client-side code
-			return {
-				success: true,
-				message: 'Registration successful! Redirecting to dashboard...',
-				user: {
-					id: newUser.id,
-					name: newUser.name,
-					email: newUser.email
-				}
-			};
+			// Redirect to /home instead of /profile
+			throw redirect(302, '/home');
 
 		} catch (error) {
+			// Handle redirect separately (it's not an actual error)
+			if (error.status === 302) {
+				throw error;
+			}
+
 			console.error('🔍 REGISTER: Registration/login failed:', error);
 			
 			// Handle PocketBase validation errors
