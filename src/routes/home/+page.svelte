@@ -257,7 +257,7 @@
   function getFileIcon(type) {
     const icons = {
       folder: '📁',
-      pdf: '📄',
+      pdf: '📝',
       doc: '📝',
       spreadsheet: '📊',
       presentation: '📎',
@@ -746,7 +746,7 @@
           on:click={() => switchView('my-drive')}
         >
           <span class="text-base">🏠</span>
-          My Drive
+          My Storge
         </button>
         <button 
           class="flex items-center gap-3 py-2 px-3 rounded-lg text-gray-600 text-sm no-underline hover:bg-gray-100 {currentView === 'shared' ? 'bg-blue-50 text-blue-600 font-medium' : ''}"
