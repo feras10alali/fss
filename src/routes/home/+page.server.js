@@ -6,16 +6,13 @@ export async function load({ locals }) {
   
   // Check if user is authenticated (handled by hooks)
   if (!locals.user) {
-    console.log('🔍 DASHBOARD: No user found, redirecting to login');
     throw redirect(302, '/login');
   }
   
   console.log('🔍 DASHBOARD: User authenticated:', locals.user.email, 'ID:', locals.user.id);
   
   try {
-    // Ensure PocketBase has the correct auth context
     if (!locals.pb.authStore.isValid) {
-      console.log('🔍 DASHBOARD: PocketBase auth store is invalid, redirecting to login');
       throw redirect(302, '/login');
     }
     
@@ -74,7 +71,7 @@ export async function load({ locals }) {
       recentActivity: recentActivity.items,
       favorites: favorites.items.map(f => f.resource_id),
       storageUsed: parseFloat(storageUsed),
-      storageTotal: 15, // Default 15GB limit
+      storageTotal: 500,
       user: locals.user
     };
     

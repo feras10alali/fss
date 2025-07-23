@@ -9,10 +9,7 @@
   import Tlogo from '$lib/images/BTlogo.webp'
   export let data;
   let showProfileDropdown = false;
-
-
-  const pb = new PocketBase('http://127.0.0.1:8090');
-
+  const pb = new PocketBase(PUBLIC_POCKETBASE_URL);
   let files = [];
   let folders = [];
   let allItems = [];
@@ -32,6 +29,7 @@
   let newItemType = ''; // 'file' or 'folder'
   let newItemName = '';
   let selectedPath = '/';
+  let selectedParentFolderId = null; // Track the actual folder ID
   let availableFolders = [];
 
   // File input reference
@@ -41,7 +39,67 @@
 
   // Current view data
   let currentItems = [];
-  let currentTitle = 'My Drive';
+  let currentTitle = 'My storge';
+  let activeDropdown = null;
+
+  function toggleDropdown(itemId, event) {
+    event.stopPropagation();
+    activeDropdown = activeDropdown === itemId ? null : itemId;
+  }
+
+  function closeDropdowns() {
+    activeDropdown = null;
+  }
+
+  function handleDropdownAction(action, item, event) {
+    event.stopPropagation();
+    activeDropdown = null;
+    
+    switch(action) {
+      case 'download':
+        downloadFile(item);
+        break;
+      case 'rename':
+        renameItem(item);
+        break;
+      case 'share':
+        shareItem(item);
+        break;
+      case 'delete':
+        deleteItem(item);
+        break;
+    }
+  }
+
+  function downloadFile(item) {
+    const url = `/api/download?id=${item.id}`;
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = item.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  function renameItem(item) {
+    const newName = prompt(`Rename ${item.type}:`, item.name);
+    if (newName && newName.trim() && newName !== item.name) {
+      // Add rename logic here
+      console.log('Rename', item.type, item.id, 'to', newName);
+    }
+  }
+
+  function shareItem(item) {
+    // Add share logic here
+    console.log('Share', item.type, item.id);
+    alert('Share functionality will be implemented');
+  }
+
+  function deleteItem(item) {
+    if (confirm(`Are you sure you want to delete "${item.name}"?`)) {
+      console.log('Delete', item.type, item.id);
+    }
+  }
 
   async function handleLogout() {
     try {
@@ -73,8 +131,11 @@
     if (!event.target.closest('.profile-dropdown-container')) {
       showProfileDropdown = false;
     }
+    // Close item dropdowns when clicking outside
+    if (!event.target.closest('.relative')) {
+      closeDropdowns();
+    }
   }
-
 
   // Initialize data
   $: {
@@ -141,15 +202,13 @@
 
   function updateAvailableFolders() {
     const folders = allItems.filter(item => item.type === 'folder');
-    const pathParts = selectedPath === '/' ? [] : selectedPath.split('/').filter(Boolean);
     
-    if (pathParts.length === 0) {
+    if (selectedParentFolderId === null) {
       // Show root level folders
       availableFolders = folders.filter(folder => !folder.parent_folder);
     } else {
-      // Find the current folder and show its subfolders
-      const currentFolderId = getFolderIdFromPath(pathParts);
-      availableFolders = folders.filter(folder => folder.parent_folder === currentFolderId);
+      // Show subfolders of the selected parent
+      availableFolders = folders.filter(folder => folder.parent_folder === selectedParentFolderId);
     }
   }
 
@@ -309,6 +368,7 @@
     newItemType = type;
     newItemName = '';
     selectedPath = '/';
+    selectedParentFolderId = null; // Reset to root
     showNewForm = true;
     showNewModal = false;
     updateAvailableFolders();
@@ -319,57 +379,72 @@
     newItemType = '';
     newItemName = '';
     selectedPath = '/';
-  }
-
-  function selectFolder(folderId, folderName) {
-    if (selectedPath === '/') {
-      selectedPath = folderName + '/';
-    } else {
-      selectedPath = selectedPath + folderName + '/';
-    }
-    updateAvailableFolders();
+    selectedParentFolderId = null;
   }
 
   function handlePathClick(event, index) {
-    const pathParts = selectedPath === '/' ? [] : selectedPath.split('/').filter(Boolean);
-    
     if (index === -1) {
       // Clicked on root "/"
       selectedPath = '/';
+      selectedParentFolderId = null;
     } else {
-      // Clicked on a specific folder
-      selectedPath = pathParts.slice(0, index + 1).join('/') + '/';
+      // Clicked on a specific folder in the path
+      const pathParts = selectedPath === '/' ? [] : selectedPath.split('/').filter(Boolean);
+      const newPathParts = pathParts.slice(0, index + 1);
+      selectedPath = newPathParts.length > 0 ? '/' + newPathParts.join('/') + '/' : '/';
+      
+      // Update the selected parent folder ID
+      selectedParentFolderId = newPathParts.length > 0 ? getFolderIdFromPath(newPathParts) : null;
     }
     
+    updateAvailableFolders();
+  }
+
+  // Enhanced folder selection function for the dropdown
+  function selectFolder(folderId, folderName) {
+    console.log('Selecting folder:', folderId, folderName);
+    
+    // Update the selected parent folder ID
+    selectedParentFolderId = folderId;
+    
+    // Update the path display
+    const currentPathParts = selectedPath === '/' ? [] : selectedPath.split('/').filter(Boolean);
+    const newPath = currentPathParts.length > 0 ? 
+      selectedPath + folderName + '/' : 
+      '/' + folderName + '/';
+    selectedPath = newPath;
+    
+    console.log('Updated selectedPath:', selectedPath);
+    console.log('Updated selectedParentFolderId:', selectedParentFolderId);
+    
+    // Update available folders for the new location
     updateAvailableFolders();
   }
 
   async function submitNewItem() {
-    if (!newItemName.trim()) {
-      alert('Please enter a name');
+    // Only check for name if creating a folder
+    if (newItemType === 'folder' && !newItemName.trim()) {
+      alert('Please enter a folder name');
       return;
     }
 
     try {
-      const formData = new FormData();
-      formData.append('name', newItemName.trim());
-      
-      // Fix: Get the correct parent folder ID
-      let parentFolderId = null;
-      
-      if (selectedPath !== '/') {
-        const pathParts = selectedPath.split('/').filter(Boolean);
-        parentFolderId = getFolderIdFromPath(pathParts);
-      }
-
-      // Only append parent_folder if we have a valid ID
-      if (parentFolderId) {
-        formData.append('parent_folder', parentFolderId);
-      }
-
-      console.log('Creating item with parent folder:', parentFolderId, 'from path:', selectedPath);
+      console.log('Creating item with parent folder:', selectedParentFolderId, 'from path:', selectedPath);
 
       if (newItemType === 'folder') {
+        const formData = new FormData();
+        formData.append('name', newItemName.trim());
+        
+        // Only append parent_folder if we have a valid ID
+        if (selectedParentFolderId) {
+          formData.append('parent_folder', selectedParentFolderId);
+          console.log('Adding parent_folder to form data:', selectedParentFolderId);
+        } else {
+          console.log('No parent folder selected - creating in root');
+        }
+
+        console.log('Form data entries:', Array.from(formData.entries()));
+
         const response = await fetch('?/createFolder', {
           method: 'POST',
           body: formData
@@ -379,18 +454,19 @@
         
         if (result.type === 'success') {
           console.log('Folder created successfully');
+          closeNewForm();
           location.reload();
         } else {
           alert('Failed to create folder: ' + (result.error || 'Unknown error'));
         }
       } else if (newItemType === 'file') {
         // Store the parent folder ID for file upload
-        window.selectedParentFolder = parentFolderId;
+        window.selectedParentFolder = selectedParentFolderId;
+        closeNewForm();
         // Trigger file upload
         fileInput.click();
       }
       
-      closeNewForm();
     } catch (error) {
       console.error('Error creating item:', error);
       alert('Failed to create item: ' + (error.message || 'Network error'));
@@ -403,7 +479,6 @@
   }
 
   // Enhanced file upload handler that uses server actions
-  // Enhanced file upload handler that uses server actions
   async function handleFileUpload(event) {
     const selectedFiles = Array.from(event.target.files);
     if (selectedFiles.length === 0) return;
@@ -415,6 +490,11 @@
       const totalFiles = selectedFiles.length;
       let completedFiles = 0;
       let successfulUploads = 0;
+      const failedUploads = [];
+
+      // Determine parent folder more reliably
+      const parentFolderId = getTargetFolderId();
+      console.log('File upload - Using parent folder:', parentFolderId);
 
       for (const file of selectedFiles) {
         try {
@@ -423,24 +503,6 @@
           // Create form data for server action
           const formData = new FormData();
           formData.append('file', file);
-          
-          // Fix: Use the stored parent folder ID or determine current folder
-          let parentFolderId = null;
-          
-          if (window.selectedParentFolder) {
-            // Use the parent folder set when creating through the form
-            parentFolderId = window.selectedParentFolder;
-          } else if (showNewForm && selectedPath !== '/') {
-            // Use selected path from new form
-            const pathParts = selectedPath.split('/').filter(Boolean);
-            parentFolderId = getFolderIdFromPath(pathParts);
-          } else {
-            // Use current folder from URL
-            const currentFolder = $page.url.searchParams.get('folder') || null;
-            parentFolderId = currentFolder;
-          }
-
-          console.log('File upload - Using parent folder:', parentFolderId);
           
           if (parentFolderId) {
             formData.append('parent_folder', parentFolderId);
@@ -459,26 +521,44 @@
               successfulUploads++;
             } else {
               console.error(`Server action failed for file "${file.name}":`, result);
+              failedUploads.push({ name: file.name, error: result.message || 'Server error' });
             }
           } else {
+            const errorText = await response.text();
             console.error(`HTTP error for file "${file.name}":`, response.status, response.statusText);
+            failedUploads.push({ name: file.name, error: `HTTP ${response.status}: ${response.statusText}` });
           }
 
         } catch (fileError) {
           console.error(`Failed to upload file "${file.name}":`, fileError);
+          failedUploads.push({ name: file.name, error: fileError.message || 'Unknown error' });
         }
 
         completedFiles++;
         uploadProgress = (completedFiles / totalFiles) * 100;
       }
 
+      // Handle results
       if (successfulUploads > 0) {
         console.log(`Successfully uploaded ${successfulUploads} out of ${totalFiles} files`);
+        
+        // Show success message with details
+        if (failedUploads.length > 0) {
+          const failedNames = failedUploads.map(f => f.name).join(', ');
+          alert(`${successfulUploads} files uploaded successfully. Failed: ${failedNames}`);
+        }
+        
         // Refresh the page to show new files
         await new Promise(resolve => setTimeout(resolve, 500));
         location.reload();
       } else {
-        alert('No files were uploaded successfully. Please try again.');
+        // Show detailed error message
+        if (failedUploads.length > 0) {
+          const errorDetails = failedUploads.map(f => `${f.name}: ${f.error}`).join('\n');
+          alert(`No files were uploaded successfully:\n\n${errorDetails}`);
+        } else {
+          alert('No files were uploaded successfully. Please try again.');
+        }
       }
 
     } catch (error) {
@@ -489,28 +569,48 @@
       uploadProgress = 0;
       event.target.value = ''; // Clear the file input
       closeNewForm();
-      // Clear the stored parent folder
-      window.selectedParentFolder = null;
+      clearSelectedFolder();
+    }
+  }
+
+  // Helper function to determine target folder ID
+  function getTargetFolderId() {
+    // Priority 1: Explicitly selected folder from the form
+    if (window.selectedParentFolder) {
+      return window.selectedParentFolder;
+    }
+    
+    // Priority 2: Currently selected parent folder ID
+    if (selectedParentFolderId) {
+      return selectedParentFolderId;
+    }
+    
+    // Priority 3: Current folder from URL parameters
+    const currentFolder = $page.url.searchParams.get('folder');
+    return currentFolder || null;
+  }
+
+  // Helper function to clear folder selection
+  function clearSelectedFolder() {
+    window.selectedParentFolder = null;
+    // Reset form state if needed
+    if (showNewForm) {
+      // You might want to reset selectedPath here depending on your UX preference
+      // selectedPath = '/';
+      // selectedParentFolderId = null;
     }
   }
 
   onMount(() => {
-    // Load authentication from cookie
     pb.authStore.loadFromCookie(document.cookie);
-    document.addEventListener('click', handleClickOutside);
-    return () => {
-      document.removeEventListener('click', handleClickOutside);
+    const listener = (e) => {
+      if (!e.target.closest('.relative') && !e.target.closest('.profile-dropdown-container')) {
+        closeDropdowns();
+        showProfileDropdown = false;
+      }
     };
-    // Verify authentication matches server data
-    if (pb.authStore.isValid && data?.user && pb.authStore.model?.id !== data.user.id) {
-      console.warn('Authentication mismatch detected');
-      console.log('Client auth user ID:', pb.authStore.model?.id);
-      console.log('Server user ID:', data.user.id);
-    }
-
-    console.log('Dashboard mounted with user:', data?.user?.email);
-    console.log('Files count:', data?.files?.length || 0);
-    console.log('Folders count:', data?.folders?.length || 0);
+    document.addEventListener('click', listener);
+    return () => document.removeEventListener('click', listener);
   });
 </script>
 
@@ -633,7 +733,7 @@
     <!-- Sidebar - Fixed positioning -->
     <aside class="w-64 bg-white border-r border-gray-200 p-4 flex flex-col fixed left-0 top-16 h-[calc(100vh-65px)] overflow-y-auto">
       <button 
-        class="flex items-center gap-3 py-3 px-4 border border-gray-200 rounded-3xl bg-white text-sm font-medium cursor-pointer mb-6 shadow-sm hover:shadow-md transition-shadow"
+        class="flex items-center gap-3 py-3 px-4 mt-4 border border-gray-200 rounded-3xl bg-white text-sm font-medium cursor-pointer mb-6 shadow-sm hover:shadow-md transition-shadow"
         on:click={openNewModal}
       >
         <span class="text-lg text-blue-600">+</span>
@@ -701,70 +801,75 @@
           <h3 class="text-lg font-medium mb-4">
             {newItemType === 'folder' ? 'Create New Folder' : 'Upload Files'}
           </h3>
+                  
+          <!-- Name Input - Only for folders -->
+          {#if newItemType === 'folder'}
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-gray-700 mb-2">Name</label>
+              <input
+                type="text"
+                bind:value={newItemName}
+                placeholder="Enter folder name"
+                class="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              />
+            </div>
+          {/if}
           
-          <!-- Name Input -->
-          <div class="mb-4">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Name</label>
-            <input 
-              type="text" 
-              bind:value={newItemName}
-              placeholder={newItemType === 'folder' ? 'Enter folder name' : 'Enter file name'}
-              class="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            />
-          </div>
-
-          <!-- Location Selection -->
+          <!-- Location Selection with Integrated Dropdown -->
           <div class="mb-4">
             <label class="block text-sm font-medium text-gray-700 mb-2">Location</label>
-            
-            <!-- Path Display -->
-            <div class="mb-2 p-2 bg-gray-50 rounded border text-sm text-gray-600">
-              <span 
-                class="cursor-pointer hover:text-blue-600 hover:underline"
-                on:click={() => handlePathClick(null, -1)}
-              >
-                /
-              </span>
-              {#each selectedPath === '/' ? [] : selectedPath.split('/').filter(Boolean) as part, index}
-                <span 
+                        
+            <!-- Path Display with Dropdown -->
+            <div class="p-2 bg-gray-50 rounded border text-sm text-gray-600">
+              <div class="flex items-center flex-wrap">
+                <span
                   class="cursor-pointer hover:text-blue-600 hover:underline"
-                  on:click={() => handlePathClick(null, index)}
+                  on:click={() => handlePathClick(null, -1)}
                 >
-                  {part}/
+                  /
                 </span>
-              {/each}
-            </div>
-
-            <!-- Folder Selection -->
-            <div class="space-y-2">
-              {#if availableFolders.length > 0}
-                {#each availableFolders as folder}
-                  <button
-                    type="button"
-                    class="w-full flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 text-left"
-                    on:click={() => selectFolder(folder.id, folder.name)}
+                {#each selectedPath === '/' ? [] : selectedPath.split('/').filter(Boolean) as part, index}
+                  <span
+                    class="cursor-pointer hover:text-blue-600 hover:underline"
+                    on:click={() => handlePathClick(null, index)}
                   >
-                    <span class="text-base">📁</span>
-                    <span>{folder.name}</span>
-                  </button>
+                    {part}/
+                  </span>
                 {/each}
-              {:else}
-                <div class="text-sm text-gray-500 p-3 bg-gray-50 rounded-lg">
-                  No subfolders available
-                </div>
-              {/if}
+                
+                <!-- Dropdown for available folders -->
+                {#if availableFolders.length > 0}
+                  <select
+                    class="ml-2 px-2 py-1 border border-gray-300 rounded text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    on:change={(e) => {
+                      const selectedFolder = availableFolders.find(f => f.id === e.target.value);
+                      if (selectedFolder) {
+                        selectFolder(selectedFolder.id, selectedFolder.name);
+                      }
+                      e.target.value = ''; // Reset dropdown
+                    }}
+                  >
+                    <option value="">Select folder...</option>
+                    {#each availableFolders as folder}
+                      <option value={folder.id}>📁 {folder.name}</option>
+                    {/each}
+                  </select>
+                {:else}
+                  <span class="ml-2 text-xs text-gray-400">(no subfolders)</span>
+                {/if}
+              </div>
             </div>
           </div>
-
+          
           <!-- Action Buttons -->
           <div class="flex gap-2 justify-end">
-            <button 
+            <button
               class="px-4 py-2 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               on:click={closeNewForm}
             >
               Cancel
             </button>
-            <button 
+            <button
               class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               on:click={submitNewItem}
             >
@@ -827,12 +932,51 @@
                     <span>{item.modified}</span>
                   </div>
                 </div>
+               <div class="relative group">
+                <!-- Dropdown Trigger -->
                 <button 
-                  class="absolute top-2 right-2 p-1 bg-transparent border-none text-base cursor-pointer rounded opacity-0 group-hover:opacity-100 hover:bg-gray-100 transition-opacity {item.starred ? 'opacity-100 text-yellow-400' : ''}"
-                  on:click|stopPropagation={() => toggleStar(item.id, item.type === 'folder' ? 'folder' : 'file')}
+                  class="p-1 bg-transparent border-none text-base cursor-pointer rounded hover:bg-gray-100"
+                  on:click={(e) => toggleDropdown(item.id, e)}
                 >
-                  {item.starred ? '⭐' : '☆'}
+                  ⋮
                 </button>
+
+                <!-- Dropdown Menu -->
+                {#if activeDropdown === item.id}
+                  <div 
+                    class="absolute right-0 top-8 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[140px]"
+                    on:click|stopPropagation
+                  >
+                    {#if item.type !== 'folder'}
+                      <button 
+                        class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+                        on:click={(e) => handleDropdownAction('download', item, e)}
+                      >
+                        📥 Download
+                      </button>
+                    {/if}
+                    <button 
+                      class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+                      on:click={(e) => handleDropdownAction('rename', item, e)}
+                    >
+                      ✏️ Rename
+                    </button>
+                    <button 
+                      class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+                      on:click={(e) => handleDropdownAction('share', item, e)}
+                    >
+                      🔗 Share
+                    </button>
+                    <button 
+                      class="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
+                      on:click={(e) => handleDropdownAction('delete', item, e)}
+                    >
+                      🗑️ Delete
+                    </button>
+                  </div>
+                {/if}
+              </div>
+
               </div>
             {/each}
           </div>
