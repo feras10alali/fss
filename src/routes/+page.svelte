@@ -51,9 +51,9 @@
           <a href="#features" class="text-gray-300 hover:text-white transition-colors">Features</a>
           <a href="#pricing" class="text-gray-300 hover:text-white transition-colors">Pricing</a>
           <a href="/about" class="text-gray-300 hover:text-white transition-colors">About</a>
-          <button class="bg-white text-black px-6 py-2 rounded-lg font-medium hover:bg-gray-100 transition-colors">
-            Sign In
-          </button>
+          <a href="/login" class="bg-white text-black px-6 py-2 rounded-lg font-medium hover:bg-gray-100 transition-colors inline-block text-center">
+		   Sign In
+		  </a>
         </div>
       </div>
     </div>
@@ -76,9 +76,9 @@
           </p>
           
           <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
-            <button class="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-8 py-4 rounded-xl font-semibold text-lg hover:from-blue-600 hover:to-purple-700 transition-all transform hover:scale-105 shadow-2xl">
-              Get Started Free
-            </button>
+            <a href="/register" class="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-8 py-4 rounded-xl font-semibold text-lg hover:from-blue-600 hover:to-purple-700 transition-all transform hover:scale-105 shadow-2xl inline-block text-center">
+				Get Started Free
+			</a>
             <button class="border border-gray-600 text-white px-8 py-4 rounded-xl font-semibold text-lg hover:bg-white hover:text-black transition-all">
               Learn More
             </button>
