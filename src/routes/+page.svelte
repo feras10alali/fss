@@ -250,8 +250,8 @@
         <div>
           <h4 class="font-semibold text-white mb-4">Support</h4>
           <ul class="space-y-2 text-gray-400">
-            <li><a href="#" class="hover:text-white transition-colors">Help Center</a></li>
-            <li><a href="#" class="hover:text-white transition-colors">Contact</a></li>
+            <li><a href="mailto:fss@feres.cloud" class="hover:text-white transition-colors">Help Center</a></li>
+            <li><a href="mailto:fss@feres.cloud" class="hover:text-white transition-colors">Contact</a></li>
             <li><a href="#" class="hover:text-white transition-colors">Privacy</a></li>
           </ul>
         </div>

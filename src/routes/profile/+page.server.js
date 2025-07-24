@@ -19,9 +19,7 @@ export async function load({ locals }) {
 }
 
 export const actions = {
-    updateProfile: async ({ request, locals }) => {
-        console.log('🔧 PROFILE: Update profile action called');
-        
+    updateProfile: async ({ request, locals }) => {        
         // Check if user is authenticated
         if (!locals.user) {
             console.log('❌ PROFILE: No user found during update');
