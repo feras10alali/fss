@@ -2,6 +2,15 @@
   import { onMount } from 'svelte';
   import logo from '$lib/images/OBlogo.webp'
   import Tlogo from '$lib/images/Tlogo.webp'
+  import { goto } from '$app/navigation';
+
+	function navigateAbout() {
+		goto('/about');
+	}
+	function navigateregister() {
+		goto('/register');
+	}
+	
   let mounted = false;
   
   onMount(() => {
@@ -79,7 +88,7 @@
             <a href="/register" class="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-8 py-4 rounded-xl font-semibold text-lg hover:from-blue-600 hover:to-purple-700 transition-all transform hover:scale-105 shadow-2xl inline-block text-center">
 				Get Started Free
 			</a>
-            <button class="border border-gray-600 text-white px-8 py-4 rounded-xl font-semibold text-lg hover:bg-white hover:text-black transition-all">
+            <button class="border border-gray-600 text-white px-8 py-4 rounded-xl font-semibold text-lg hover:bg-white hover:text-black transition-all" on:click={navigateAbout}>
               Learn More
             </button>
           </div>
@@ -142,7 +151,7 @@
             <li class="flex items-center"><span class="text-green-400 mr-2">✓</span> Mobile Apps</li>
             <li class="flex items-center"><span class="text-green-400 mr-2">✓</span> Basic Support</li>
           </ul>
-          <button class="w-full bg-gray-700 text-white py-3 rounded-lg font-semibold hover:bg-gray-600 transition-colors">
+          <button class="w-full bg-gray-700 text-white py-3 rounded-lg font-semibold hover:bg-gray-600 transition-colors" on:click={navigateregister}>
             Get Started
           </button>
         </div>
@@ -154,7 +163,7 @@
               Most Popular
             </span>
           </div>
-          <h3 class="text-2xl font-bold mb-2 text-white">Pro</h3>
+          <h3 class="text-2xl font-bold mb-2 text-white">Pro <span class="text-xl text-red-600"> not available</span></h3>
           <div class="text-4xl font-bold mb-4 text-white">
             $9<span class="text-lg text-gray-400">/month</span>
           </div>
@@ -171,7 +180,7 @@
 
         <!-- Business Plan -->
         <div class="bg-gray-800/50 rounded-2xl p-8 border border-gray-700/50">
-          <h3 class="text-2xl font-bold mb-2 text-white">Business</h3>
+          <h3 class="text-2xl font-bold mb-2 text-white">Business <span class="text-xl text-red-600"> not available</span></h3>
           <div class="text-4xl font-bold mb-4 text-white">
             $25<span class="text-lg text-gray-400">/month</span>
           </div>
@@ -210,10 +219,10 @@
       <div class="grid md:grid-cols-4 gap-8">
         <div>
           <div class="flex items-center space-x-3 mb-4">
-            <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-              <span class="text-white font-bold text-sm">F</span>
+            <div class="flex items-center justify-center">
+              <img src={logo} alt="logo" class="w-30">
             </div>
-            <span class="text-xl font-bold text-white">FSS</span>
+			  <img src={Tlogo} alt="text logo" class="w-30">
           </div>
           <p class="text-gray-400">
             Secure, fast, and reliable cloud storage for everyone.

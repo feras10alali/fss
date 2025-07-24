@@ -42,6 +42,44 @@
   let currentTitle = 'My storge';
   let activeDropdown = null;
 
+  let currentFolderId = null;
+  let folderPath = [];
+  let breadcrumbs = [{ id: null, name: 'My Storage' }];
+
+  // 2. ADD THIS NEW FUNCTION (add after existing functions)
+  function navigateToFolder(folder) {
+    // Update current folder
+    currentFolderId = folder.id;
+    
+    // Update breadcrumbs
+    const existingIndex = breadcrumbs.findIndex(crumb => crumb.id === folder.id);
+    if (existingIndex !== -1) {
+      // If folder is already in breadcrumbs, truncate to that point
+      breadcrumbs = breadcrumbs.slice(0, existingIndex + 1);
+    } else {
+      // Add new folder to breadcrumbs
+      breadcrumbs = [...breadcrumbs, { id: folder.id, name: folder.name }];
+    }
+    
+    // Update current view to show folder contents
+    switchView('my-drive');
+  }
+
+  // 3. ADD THIS NEW FUNCTION (add after navigateToFolder)
+  function navigateToBreadcrumb(breadcrumb) {
+    currentFolderId = breadcrumb.id;
+    
+    // Update breadcrumbs - remove everything after the clicked breadcrumb
+    const index = breadcrumbs.findIndex(crumb => crumb.id === breadcrumb.id);
+    if (index !== -1) {
+      breadcrumbs = breadcrumbs.slice(0, index + 1);
+    }
+    
+    // Update current view
+    switchView('my-drive');
+  }
+
+
   function toggleDropdown(itemId, event) {
     event.stopPropagation();
     activeDropdown = activeDropdown === itemId ? null : itemId;
@@ -165,10 +203,20 @@
 
   // Update current view data
   $: {
+    let baseItems = allItems;
+    
+    // Filter by current folder if we're in a specific folder
+    if (currentFolderId && currentView === 'my-drive') {
+      baseItems = allItems.filter(item => item.parent_folder === currentFolderId);
+    } else if (currentView === 'my-drive') {
+      // Show root level items (no parent folder)
+      baseItems = allItems.filter(item => !item.parent_folder);
+    }
+    
     switch (currentView) {
       case 'my-drive':
-        currentItems = allItems;
-        currentTitle = 'My Drive';
+        currentItems = baseItems;
+        currentTitle = breadcrumbs[breadcrumbs.length - 1]?.name || 'My Storage';
         break;
       case 'shared':
         currentItems = allItems.filter(item => item.shared_with_me);
@@ -187,10 +235,11 @@
         currentTitle = 'Trash';
         break;
       default:
-        currentItems = allItems;
-        currentTitle = 'My Drive';
+        currentItems = baseItems;
+        currentTitle = 'My Storage';
     }
   }
+
 
   // Get recent items (last 4)
   $: recentItems = allItems.slice(0, 4);
@@ -341,7 +390,7 @@
 
   function handleItemClick(item) {
     if (item.type === 'folder') {
-      goto(`/folder/${item.id}`);
+      navigateToFolder(item);
     } else {
       // Load auth from cookie if not already loaded
       if (!pb.authStore.isValid) {
@@ -354,6 +403,12 @@
 
   function switchView(view) {
     currentView = view;
+    
+    // Reset folder navigation when switching away from My Drive
+    if (view !== 'my-drive') {
+      currentFolderId = null;
+      breadcrumbs = [{ id: null, name: 'My Storage' }];
+    }
   }
 
   function openNewModal() {
@@ -435,10 +490,11 @@
         const formData = new FormData();
         formData.append('name', newItemName.trim());
         
-        // Only append parent_folder if we have a valid ID
-        if (selectedParentFolderId) {
-          formData.append('parent_folder', selectedParentFolderId);
-          console.log('Adding parent_folder to form data:', selectedParentFolderId);
+        // Use current folder as parent if no specific parent is selected
+        const parentId = selectedParentFolderId || currentFolderId;
+        if (parentId) {
+          formData.append('parent_folder', parentId);
+          console.log('Adding parent_folder to form data:', parentId);
         } else {
           console.log('No parent folder selected - creating in root');
         }
@@ -460,8 +516,8 @@
           alert('Failed to create folder: ' + (result.error || 'Unknown error'));
         }
       } else if (newItemType === 'file') {
-        // Store the parent folder ID for file upload
-        window.selectedParentFolder = selectedParentFolderId;
+        // Store the parent folder ID for file upload (use current folder if none selected)
+        window.selectedParentFolder = selectedParentFolderId || currentFolderId;
         closeNewForm();
         // Trigger file upload
         fileInput.click();
@@ -913,6 +969,26 @@
         </section>
       {/if}
 
+      <!-- Breadcrumb Navigation - ADD THIS AFTER UPLOAD PROGRESS SECTION -->
+      {#if currentView === 'my-drive' && breadcrumbs.length > 1}
+        <div class="mb-6 flex items-center gap-2 text-sm text-gray-600">
+          {#each breadcrumbs as breadcrumb, index}
+            {#if index === breadcrumbs.length - 1}
+              <!-- Current folder - not clickable -->
+              <span class="text-gray-900 font-medium">{breadcrumb.name}</span>
+            {:else}
+              <!-- Clickable breadcrumb -->
+              <button 
+                class="hover:text-blue-600 hover:underline transition-colors"
+                on:click={() => navigateToBreadcrumb(breadcrumb)}
+              >
+                {breadcrumb.name}
+              </button>
+              <span class="text-gray-400 mx-1">›</span>
+            {/if}
+          {/each}
+        </div>
+      {/if}
       <!-- Files section -->
       <section>
         <div class="flex justify-between items-center mb-4">

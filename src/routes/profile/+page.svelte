@@ -1,7 +1,6 @@
 <script>
 	import { enhance } from '$app/forms';
 	import { page } from '$app/stores';
-	import { goto } from '$app/navigation';
 	import { Edit3, Save, X, User, Mail, Phone, MapPin, Upload, Check, AlertCircle, Plus, ArrowLeft, Home } from 'lucide-svelte';
 	
 	export let data; // Data passed from server (contains user)
@@ -35,11 +34,7 @@
 	// File input reference
 	let fileInput;
 	let avatarLoading = false;
-	
-	// Navigation function
-	function navigateHome() {
-		goto('/home');
-	}
+
 	
 	// Reactive statement to update formData when user changes
 	$: if (user) {
@@ -184,13 +179,13 @@
 		<!-- Header with Home Arrow -->
 		<div class="text-center mb-8 relative">
 			<!-- Home Arrow Button -->
-			<button 
-				on:click={navigateHome}
+			<a 
+				href="/home"
 				class="absolute left-0 top-1/2 transform -translate-y-1/2 bg-white hover:bg-gray-50 text-gray-700 rounded-full p-3 shadow-lg transition-all duration-200 hover:scale-105 hover:shadow-xl group"
 				title="Go to Home"
 			>
 				<ArrowLeft size={20} class="group-hover:-translate-x-1 transition-transform duration-200" />
-			</button>
+			</a>
 			
 			<h1 class="text-3xl font-bold text-gray-900 mb-2">Profile Settings</h1>
 			<p class="text-gray-600">Manage your account information</p>
