@@ -24,7 +24,6 @@
   let uploading = false;
   let uploadProgress = 0;
 
-  // New form state
   let showNewForm = false;
   let newItemType = ''; // 'file' or 'folder'
   let newItemName = '';
@@ -32,12 +31,10 @@
   let selectedParentFolderId = null; // Track the actual folder ID
   let availableFolders = [];
 
-  // File input reference
   let fileInput;
   let createFolderForm;
   let uploadForm;
 
-  // Current view data
   let currentItems = [];
   let currentTitle = 'My storge';
   let activeDropdown = null;
@@ -45,8 +42,17 @@
   let currentFolderId = null;
   let folderPath = [];
   let breadcrumbs = [{ id: null, name: 'My Storage' }];
+  
+  let currentShareItem = null;
+  let showShareModal = false;
+  let shareEmail = '';
+  let sharePermission = 'view';
+  let shareMessage = '';
+  let shareExpiry = '';
+  let isSharing = false;
+  let shareError = '';
+  let shareSuccess = '';
 
-  // 2. ADD THIS NEW FUNCTION (add after existing functions)
   function navigateToFolder(folder) {
     // Update current folder
     currentFolderId = folder.id;
@@ -128,9 +134,81 @@
   }
 
   function shareItem(item) {
-    // Add share logic here
-    console.log('Share', item.type, item.id);
-    alert('Share functionality will be implemented');
+    currentShareItem = item;  // Changed from shareItem to currentShareItem
+    shareEmail = '';
+    sharePermission = 'view';
+    shareMessage = '';
+    shareExpiry = '';
+    shareError = '';
+    shareSuccess = '';
+    showShareModal = true;
+  }
+
+   function closeShareModal() {
+    showShareModal = false;
+    currentShareItem = null;  // Changed from shareItem to currentShareItem
+    shareEmail = '';
+    sharePermission = 'view';
+    shareMessage = '';
+    shareExpiry = '';
+    shareError = '';
+    shareSuccess = '';
+    isSharing = false;
+  }
+
+  async function handleShare() {
+    if (!shareEmail.trim()) {
+      shareError = 'Please enter an email address';
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(shareEmail.trim())) {
+      shareError = 'Please enter a valid email address';
+      return;
+    }
+
+    isSharing = true;
+    shareError = '';
+    shareSuccess = '';
+
+    try {
+      const formData = new FormData();
+      formData.append('resource_id', currentShareItem.id);  // Changed from shareItem to currentShareItem
+      formData.append('resource_type', currentShareItem.type);  // Changed from shareItem to currentShareItem
+      formData.append('shared_with_email', shareEmail.trim());
+      formData.append('permission', sharePermission);
+      if (shareMessage.trim()) {
+        formData.append('message', shareMessage.trim());
+      }
+      if (shareExpiry) {
+        formData.append('expires_at', new Date(shareExpiry).toISOString());
+      }
+
+      const response = await fetch('?/shareResource', {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+      
+      if (result.type === 'success') {
+        shareSuccess = `Successfully shared "${currentShareItem.name}" with ${shareEmail}`;  // Changed from shareItem to currentShareItem
+        // Clear form after short delay
+        setTimeout(() => {
+          closeShareModal();
+        }, 2000);
+      } else {
+        shareError = result.error || 'Failed to share item';
+      }
+
+    } catch (error) {
+      console.error('Share error:', error);
+      shareError = 'Network error. Please try again.';
+    } finally {
+      isSharing = false;
+    }
   }
 
   function deleteItem(item) {
@@ -916,6 +994,8 @@
               </div>
             </div>
           </div>
+
+
           
           <!-- Action Buttons -->
           <div class="flex gap-2 justify-end">
@@ -1065,6 +1145,149 @@
             </p>
           </div>
         {/if}
+                  {#if showShareModal && currentShareItem}
+            <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" on:click={closeShareModal}>
+              <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl transform transition-all" on:click|stopPropagation>
+                <!-- Header -->
+                <div class="flex items-center justify-between mb-6">
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <span class="text-xl">{getFileIcon(currentShareItem.type)}</span>
+                    </div>
+                    <div>
+                      <h3 class="text-lg font-semibold text-gray-900">Share "{currentShareItem.name}"</h3>
+                      <p class="text-sm text-gray-500">Share this {currentShareItem.type} with others</p>
+                    </div>
+                  </div>
+                  <button 
+                    class="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                    on:click={closeShareModal}
+                  >
+                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                  </button>
+                </div>
+
+                <!-- Error/Success Messages -->
+                {#if shareError}
+                  <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div class="flex items-center gap-2">
+                      <svg class="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                      </svg>
+                      <span class="text-sm text-red-700">{shareError}</span>
+                    </div>
+                  </div>
+                {/if}
+
+                {#if shareSuccess}
+                  <div class="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div class="flex items-center gap-2">
+                      <svg class="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                      </svg>
+                      <span class="text-sm text-green-700">{shareSuccess}</span>
+                    </div>
+                  </div>
+                {/if}
+
+                <!-- Share Form -->
+                <div class="space-y-4">
+                  <!-- Email Input -->
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                      Email address
+                    </label>
+                    <div class="relative">
+                      <input
+                        type="email"
+                        bind:value={shareEmail}
+                        placeholder="Enter email address"
+                        class="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all pl-10"
+                        class:border-red-300={shareError && shareError.includes('email')}
+                      />
+                      <svg class="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"></path>
+                      </svg>
+                    </div>
+                  </div>
+
+                  <!-- Permission Level -->
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                      Permission level
+                    </label>
+                    <select
+                      bind:value={sharePermission}
+                      class="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                    >
+                      <option value="view">👁️ Can view</option>
+                      <option value="edit">✏️ Can edit</option>
+                      <option value="comment">💬 Can comment</option>
+                    </select>
+                  </div>
+
+                  <!-- Optional Message -->
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                      Message (optional)
+                    </label>
+                    <textarea
+                      bind:value={shareMessage}
+                      placeholder="Add a personal message..."
+                      rows="3"
+                      class="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all resize-none"
+                    ></textarea>
+                  </div>
+
+                  <!-- Expiry Date -->
+                  <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                      Access expires (optional)
+                    </label>
+                    <input
+                      type="datetime-local"
+                      bind:value={shareExpiry}
+                      min={new Date().toISOString().slice(0, 16)}
+                      class="w-full p-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                    />
+                  </div>
+
+                  <!-- Action Buttons -->
+                  <div class="flex gap-3 pt-4">
+                    <button
+                      type="button"
+                      class="flex-1 px-4 py-3 text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                      on:click={closeShareModal}
+                      disabled={isSharing}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      class="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      on:click={handleShare}
+                      disabled={isSharing || !shareEmail.trim()}
+                    >
+                      {#if isSharing}
+                        <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                          <path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Sharing...
+                      {:else}
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"></path>
+                        </svg>
+                        Share
+                      {/if}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          {/if}
       </section>
     </main>
   </div>

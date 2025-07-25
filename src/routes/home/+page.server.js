@@ -215,6 +215,8 @@ export const actions = {
     }
   },
 
+  
+
   uploadFile: async ({ request, locals }) => {
     console.log('🔍 UPLOAD_FILE: Action called');
     
@@ -426,5 +428,221 @@ export const actions = {
         error: error.message || 'Failed to toggle favorite'
       };
     }
+  },
+  shareResource: async ({ request, locals }) => {
+    console.log('🔍 SHARE_RESOURCE: Action called');
+    
+    if (!locals.user) {
+      console.log('❌ SHARE_RESOURCE: No user found');
+      return {
+        type: 'error',
+        error: 'Authentication required'
+      };
+    }
+
+    if (!locals.pb.authStore.isValid) {
+      console.log('❌ SHARE_RESOURCE: Invalid auth store');
+      return {
+        type: 'error',
+        error: 'Authentication required'
+      };
+    }
+
+    try {
+      const data = await request.formData();
+      const resourceId = data.get('resource_id');
+      const resourceType = data.get('resource_type');
+      const sharedWithEmail = data.get('shared_with_email');
+      const permission = data.get('permission') || 'view';
+      const message = data.get('message') || '';
+      const expiresAt = data.get('expires_at') || null;
+
+      console.log('🔍 SHARE_RESOURCE: Form data received:', {
+        resource_id: resourceId,
+        resource_type: resourceType,
+        shared_with_email: sharedWithEmail,
+        permission: permission,
+        expires_at: expiresAt
+      });
+
+      // Validate required fields
+      if (!resourceId || !resourceType || !sharedWithEmail) {
+        return {
+          type: 'error',
+          error: 'Missing required fields'
+        };
+      }
+
+      // Validate resource belongs to user
+      const collection = resourceType === 'folder' ? 'folders' : 'files';
+      try {
+        const resource = await locals.pb.collection(collection).getOne(resourceId);
+        if (resource.owner !== locals.user.id) {
+          return {
+            type: 'error',
+            error: 'You can only share your own items'
+          };
+        }
+      } catch (resourceError) {
+        console.error('❌ SHARE_RESOURCE: Resource validation error:', resourceError);
+        return {
+          type: 'error',
+          error: 'Resource not found'
+        };
+      }
+
+      // Check if user exists by email - REQUIRED since shared_with is a relation
+      let sharedWithUser = null;
+      try {
+        console.log('🔍 SHARE_RESOURCE: Searching for user with email:', sharedWithEmail);
+        
+        // Try different query formats
+        sharedWithUser = await locals.pb.collection('users').getFirstListItem(
+          `email="${sharedWithEmail}"`
+        );
+        
+        console.log('✅ SHARE_RESOURCE: Found user:', {
+          id: sharedWithUser.id,
+          email: sharedWithUser.email,
+          name: sharedWithUser.name
+        });
+        
+      } catch (userError) {
+        console.log('❌ SHARE_RESOURCE: User lookup failed:', userError);
+        console.log('❌ SHARE_RESOURCE: Error details:', {
+          status: userError.status,
+          message: userError.message,
+          response: userError.response
+        });
+        
+        // Try alternative query without spaces
+        try {
+          console.log('🔍 SHARE_RESOURCE: Trying alternative query format...');
+          sharedWithUser = await locals.pb.collection('users').getList(1, 1, {
+            filter: `email="${sharedWithEmail}"`
+          });
+          
+          if (sharedWithUser.items && sharedWithUser.items.length > 0) {
+            sharedWithUser = sharedWithUser.items[0];
+            console.log('✅ SHARE_RESOURCE: Found user with alternative method:', {
+              id: sharedWithUser.id,
+              email: sharedWithUser.email
+            });
+          } else {
+            throw new Error('No user found with alternative method');
+          }
+          
+        } catch (altError) {
+          console.log('❌ SHARE_RESOURCE: Alternative query also failed:', altError);
+          
+          // Let's also try to list all users to see the structure
+          try {
+            const allUsers = await locals.pb.collection('users').getList(1, 5);
+            console.log('🔍 SHARE_RESOURCE: Sample users for debugging:', 
+              allUsers.items.map(u => ({
+                id: u.id,
+                email: u.email,
+                username: u.username
+              }))
+            );
+          } catch (listError) {
+            console.log('❌ SHARE_RESOURCE: Could not list users:', listError);
+          }
+          
+          return {
+            type: 'error',
+            error: 'User with this email address not found. They need to register first.'
+          };
+        }
+      }
+
+      // Check if already shared with this user
+      try {
+        const existingShare = await locals.pb.collection('shares').getFirstListItem(
+          `resource_id = "${resourceId}" && resource_type = "${resourceType}" && shared_with = "${sharedWithUser.id}"`
+        );
+        
+        // Update existing share
+        const updatedShare = await locals.pb.collection('shares').update(existingShare.id, {
+          permission: permission,
+          message: message,
+          expires_at: expiresAt,
+          is_active: true
+        });
+
+        console.log('✅ SHARE_RESOURCE: Updated existing share:', updatedShare.id);
+
+        return {
+          type: 'success',
+          message: 'Share updated successfully',
+          share: updatedShare
+        };
+
+      } catch (existingError) {
+        // No existing share, create new one
+        console.log('🔍 SHARE_RESOURCE: Creating new share');
+      }
+
+      // Create new share record
+      const shareData = {
+        owner: locals.user.id,
+        resource_id: resourceId,
+        resource_type: resourceType,
+        shared_with: sharedWithUser.id, // Use the user ID for the relation
+        permission: permission,
+        message: message,
+        is_active: true
+      };
+
+      // Add expiry date if provided
+      if (expiresAt) {
+        shareData.expires_at = expiresAt;
+      }
+
+      const newShare = await locals.pb.collection('shares').create(shareData);
+
+      console.log('✅ SHARE_RESOURCE: Share created successfully:', {
+        id: newShare.id,
+        resource_id: resourceId,
+        shared_with_email: sharedWithEmail,
+        permission: permission
+      });
+
+      // Add to recent activity
+      try {
+        await locals.pb.collection('recent_activity').create({
+          user: locals.user.id,
+          action: 'share',
+          resource_type: resourceType,
+          resource_id: resourceId,
+          resource_name: `Shared with ${sharedWithEmail}`
+        });
+      } catch (activityError) {
+        console.warn('⚠️ SHARE_RESOURCE: Failed to create activity log:', activityError);
+      }
+
+      // TODO: Send email notification to shared user
+      // You can implement email sending here if needed
+
+      return {
+        type: 'success',
+        message: 'Item shared successfully',
+        share: newShare
+      };
+
+    } catch (error) {
+      console.error('❌ SHARE_RESOURCE: Error:', error);
+      console.error('❌ SHARE_RESOURCE: Error details:', {
+        status: error.status,
+        message: error.message,
+        response: error.response
+      });
+
+      return {
+        type: 'error',
+        error: error.message || 'Failed to share item'
+      };
+    }
   }
+  
 };
